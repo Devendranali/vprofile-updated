@@ -118,7 +118,7 @@
                 </p>
                 <p><strong>Address:</strong> Punjagutta Colony Ameerpet, Hyderabad</p>
                 <p><strong>Phone:</strong> +91-8001234567</p>
-                <p><strong>Email:</strong> contact@hkhinfotech.com</p>
+                <p><strong>Email:</strong> DevOps@hkhinfotech.com</p>
   	</div>
    </div>
 
