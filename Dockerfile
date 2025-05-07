@@ -1,4 +1,4 @@
-FROM openjdk:21-jdk-slim as build
+FROM openjdk:21-jdk-slim AS build
 RUN apt-get update && apt-get install -y maven
 COPY . /vprofile-updated
 RUN cd /vprofile-updated && mvn clean install

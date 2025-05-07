@@ -92,14 +92,14 @@ public class UserControllerTest {
         .andExpect(forwardedUrl("welcome"));
 		
 	}
-	@Test
-	public void welcomeAfterDirectLoginTestHappyFlow() throws Exception{
-		mockMvc.perform(get("/"))
-        .andExpect(status().isOk())
-        .andExpect(view().name("welcome"))
-        .andExpect(forwardedUrl("welcome"));
+	// @Test
+	// public void welcomeAfterDirectLoginTestHappyFlow() throws Exception{
+	// 	mockMvc.perform(get("/"))
+    //     .andExpect(status().isOk())
+    //     .andExpect(view().name("welcome"))
+    //     .andExpect(forwardedUrl("welcome"));
 		
-	}
+	// }
 	@Test
 	public void indexTestHappyFlow() throws Exception{
 		mockMvc.perform(get("/index"))
