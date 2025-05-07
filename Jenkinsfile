@@ -1,121 +1,189 @@
+def COLOR_MAP = [
+    'SUCCESS': '#00FF00',
+    'FAILURE': '#FF0000',
+    'UNSTABLE': '#FFFF00',
+    'ABORTED': '#FFA500'
+] 
 pipeline {
-    
 	agent any
-/*	
+
 	tools {
-        maven "maven3"
-    }
-*/	
-    environment {
-        NEXUS_VERSION = "nexus3"
-        NEXUS_PROTOCOL = "http"
-        NEXUS_URL = "172.31.40.209:8081"
-        NEXUS_REPOSITORY = "vprofile-release"
-	NEXUS_REPO_ID    = "vprofile-release"
-        NEXUS_CREDENTIAL_ID = "nexuslogin"
-        ARTVERSION = "${env.BUILD_ID}"
-    }
-	
-    stages{
-        
-        stage('BUILD'){
+		maven 'maven'
+	}
+
+	environment {
+		AWS_CRDS = credentials('aws_creds')
+        AWS_REGION = credentials('aws_region')
+        CLUSTER_NAME = credentials('clustername')
+
+        KUBECONFIG = '/var/lib/jenkins/.kube/config'
+        CHART_PATH = 'helm/vprofile/'
+        STAGING_NAMESPACE = 'staging'
+        PROD_NAMESPACE = 'production'
+
+        ECR_REPO_NAME_VPROFILE = credentials('ecr_repo_name_vprofile')
+        ECR_REPO_URI_VPROFILE = credentials('ecr_repo_uri_vprofile')
+
+        GITHUB_TOKEN = credentials('github')
+	}
+
+	stages {
+
+        stage('Installing Dependencies') {
+            options { timestamps() }
             steps {
                 sh 'mvn clean install -DskipTests'
             }
-            post {
-                success {
-                    echo 'Now Archiving...'
-                    archiveArtifacts artifacts: '**/target/*.war'
-                }
-            }
         }
 
-	stage('UNIT TEST'){
-            steps {
-                sh 'mvn test'
-            }
-        }
-
-	stage('INTEGRATION TEST'){
-            steps {
-                sh 'mvn verify -DskipUnitTests'
-            }
-        }
-		
-        stage ('CODE ANALYSIS WITH CHECKSTYLE'){
-            steps {
-                sh 'mvn checkstyle:checkstyle'
-            }
-            post {
-                success {
-                    echo 'Generated Analysis Result'
-                }
-            }
-        }
-
-        stage('CODE ANALYSIS with SONARQUBE') {
-          
-		  environment {
-             scannerHome = tool 'sonarscanner4'
-          }
-
-          steps {
-            withSonarQubeEnv('sonar-pro') {
-               sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=vprofile \
-                   -Dsonar.projectName=vprofile-repo \
-                   -Dsonar.projectVersion=1.0 \
-                   -Dsonar.sources=src/ \
-                   -Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
-                   -Dsonar.junit.reportsPath=target/surefire-reports/ \
-                   -Dsonar.jacoco.reportsPath=target/jacoco.exec \
-                   -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml'''
-            }
-
-            timeout(time: 10, unit: 'MINUTES') {
-               waitForQualityGate abortPipeline: true
-            }
-          }
-        }
-
-        stage("Publish to Nexus Repository Manager") {
+        stage('Unit Test') {
             steps {
                 script {
-                    pom = readMavenPom file: "pom.xml";
-                    filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
-                    echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} ${filesByGlob[0].length} ${filesByGlob[0].lastModified}"
-                    artifactPath = filesByGlob[0].path;
-                    artifactExists = fileExists artifactPath;
-                    if(artifactExists) {
-                        echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version ${pom.version} ARTVERSION";
-                        nexusArtifactUploader(
-                            nexusVersion: NEXUS_VERSION,
-                            protocol: NEXUS_PROTOCOL,
-                            nexusUrl: NEXUS_URL,
-                            groupId: pom.groupId,
-                            version: ARTVERSION,
-                            repository: NEXUS_REPOSITORY,
-                            credentialsId: NEXUS_CREDENTIAL_ID,
-                            artifacts: [
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: artifactPath,
-                                type: pom.packaging],
-                                [artifactId: pom.artifactId,
-                                classifier: '',
-                                file: "pom.xml",
-                                type: "pom"]
-                            ]
-                        );
-                    } 
-		    else {
-                        error "*** File: ${artifactPath}, could not be found";
+                    // Run Maven unit tests and generate reports
+                    sh "mvn test"
+                }
+            }
+            post {
+                always {
+                    junit '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('Checkstyle Analysis') {
+            steps {
+                sh 'mvn checkstyle:checkstyle'
+            } 
+        }
+
+        stage('Docker Build') {
+            steps {
+                script {
+                    sh "docker build -t ${ECR_REPO_URI_VPROFILE}:${BUILD_NUMBER} -f Dockerfile ."
+                }
+            }
+        }
+
+        stage('Trivy Vulnerability Scanner') {
+            steps {
+                // sh 'echo $PATH && which trivy && trivy --version'
+                sh  ''' 
+                    trivy image $ECR_REPO_URI_VPROFILE:$BUILD_NUMBER \
+                        --severity LOW,MEDIUM,HIGH \
+                        --exit-code 0 \
+                        --quiet \
+                        --format json -o trivy-image-MEDIUM-results.json
+
+                    trivy image $ECR_REPO_URI_VPROFILE:$BUILD_NUMBER \
+                        --severity CRITICAL \
+                        --exit-code 0 \
+                        --quiet \
+                        --format json -o trivy-image-CRITICAL-results.json
+                '''
+            }
+            post {
+                always {
+                    sh '''
+                        trivy convert \
+                            --format template --template "@/usr/local/share/trivy/templates/html.tpl" \
+                            --output trivy-image-MEDIUM-results.html trivy-image-MEDIUM-results.json 
+
+                        trivy convert \
+                            --format template --template "@/usr/local/share/trivy/templates/html.tpl" \
+                            --output trivy-image-CRITICAL-results.html trivy-image-CRITICAL-results.json
+
+                        trivy convert \
+                            --format template --template "@/usr/local/share/trivy/templates/junit.tpl" \
+                            --output trivy-image-MEDIUM-results.xml  trivy-image-MEDIUM-results.json 
+
+                        trivy convert \
+                            --format template --template "@/usr/local/share/trivy/templates/junit.tpl" \
+                            --output trivy-image-CRITICAL-results.xml trivy-image-CRITICAL-results.json          
+                    '''
+                }
+            }
+        }
+
+        stage('ECR login and Push Docker Image') {
+            steps {
+                script {
+                    withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws_creds', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO_URI_VPROFILE}"
+                        sh "docker push ${ECR_REPO_URI_VPROFILE}:${BUILD_NUMBER}"
                     }
                 }
             }
         }
 
+        stage('kube config creation') {
+            steps{
+                script {
+                    withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws_creds', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]){
+                        sh 'aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}'
+                        sh 'cat ~/.kube/config'
+                    }
+                }
+            }
+        }
 
+        stage('Deploy to Staging Helm') {
+            steps {
+                sh 'pwd'
+                sh '''
+                    helm upgrade --install vprofile ${CHART_PATH} \
+                    --namespace staging \
+                    --create-namespace \
+                    -f ${CHART_PATH}/staging-values.yaml \
+                    --set appimage=${ECR_REPO_URI_VPROFILE} \
+                    --set apptag=${BUILD_NUMBER} \
+                    --kubeconfig ${KUBECONFIG} --debug
+                   '''
+            }
+        }
+
+        stage('Upload - AWS S3') {
+            steps {
+                withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws_creds', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh  '''
+                            ls -ltr
+                            mkdir reports-$BUILD_ID
+                            cp -rf target/surefire-reports/ reports-$BUILD_ID/
+                            cp -rf target/checkstyle-result.xml reports-$BUILD_ID/
+                            cp trivy*.* reports-$BUILD_ID/
+                            ls -ltr reports-$BUILD_ID/
+                        '''
+                        s3Upload(
+                            file:"reports-$BUILD_ID", 
+                            bucket:'staging-test-reports-chatapp', 
+                            path:"jenkins-$BUILD_ID/"
+                        )
+                }
+            }
+        }
+
+        stage('verify deployment') {
+            steps {
+                script {
+                    withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws_creds', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        sh 'aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}'
+                        sh 'kubectl get pods -n staging'
+                        sh 'kubectl get svc -n staging'
+                        sh 'kubectl get deployment -n staging'
+                    }
+                }
+            }
+        }
     }
-
-
+    post {
+        always {
+            script {
+                def color = COLOR_MAP[currentBuild.currentResult] ?: '#FFFFFF'
+                def message = "Pipeline ${currentBuild.currentResult}: ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}"
+                slackSend channel: '#jenkins-cicd', color: color, message: message
+            }
+            //Add channel name
+            // slackSend channel: '#jenkins-cicd', color: '#FF0000', message: "Find Status of Pipeline:- ${currentBuild.currentResult} ${env.JOB_NAME} ${env.BUILD_NUMBER} ${BUILD_URL}"
+            // message: "Find Status of Pipeline:- ${currentBuild.currentResult} ${env.JOB_NAME} ${env.BUILD_NUMBER} ${BUILD_URL}"
+        }
+    }
 }

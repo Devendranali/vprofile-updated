@@ -1,0 +1,10 @@
+
+# Docker image for the application
+appimage: myregistry/vproapp
+
+# Tag for the Docker image
+apptag: latest
+pullPolicy: Always
+
+ingress:
+  host: prod.vanthiyadevan.xyz
