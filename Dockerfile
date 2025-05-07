@@ -1,14 +1,15 @@
-FROM openjdk:21-jdk-slim AS build
-RUN apt-get update && apt-get install -y maven
+# Build stage with Maven & JDK 21
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 COPY . /vprofile-updated
-RUN cd /vprofile-updated && mvn clean install
+WORKDIR /vprofile-updated
+RUN mvn clean install
 
-FROM tomcat:10-jdk21
+# Slim Tomcat runtime
+FROM tomcat:10.1-jdk21-temurin
 LABEL "Project"="Vprofile"
 LABEL "Author"="vickey"
 RUN rm -rf /usr/local/tomcat/webapps/*
-COPY --from=build vprofile-updated/target/vprofile-v2.war /usr/local/tomcat/webapps/ROOT.war
+COPY --from=build /vprofile-updated/target/vprofile-v2.war /usr/local/tomcat/webapps/ROOT.war
 
 EXPOSE 8080
 CMD ["catalina.sh", "run"]
-
