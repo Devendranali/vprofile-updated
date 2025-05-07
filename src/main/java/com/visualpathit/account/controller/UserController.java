@@ -66,6 +66,12 @@ public class UserController {
         return "login";
     }
 
+    @GetMapping("/login")
+    public String loginPage() {
+        return "login";
+    }
+
+
     @PostMapping("/login")
     public String loginPost(@ModelAttribute("user") User user, Model model) {
         boolean loginSuccessful = securityService.autologin(user.getUsername(), user.getPassword());
