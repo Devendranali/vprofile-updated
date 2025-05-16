@@ -49,7 +49,14 @@ pipeline {
             steps {
                 script {
                     withSonarQubeEnv('sonar-scanner') {
-                        sh 'mvn sonar:sonar -Dsonar.projectKey=vprofile'
+                        sh '''
+                            mvn sonar:sonar \
+                              -Dsonar.projectKey=vprofile \
+                              -Dsonar.projectName=vprofile \
+                              -Dsonar.projectVersion=1.0 \
+                              -Dsonar.sources=src \
+                              -Dsonar.java.binaries=target/classes
+                        '''
                     }
                 }
             }
