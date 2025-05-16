@@ -1,0 +1,58 @@
+pipeline {
+    tools {
+        maven 'maven'
+    }
+    agent any
+    environment {
+        AWS_CRDS = credentials('aws_creds')
+        AWS_REGION = credentials('aws_region')
+        CLUSTER_NAME = credentials('clustername')
+
+        KUBECONFIG = '/var/lib/jenkins/.kube/config'
+        CHART_PATH = 'helm/vprofile/'
+        STAGING_NAMESPACE = 'staging'
+        PROD_NAMESPACE = 'production'
+
+        ECR_REPO_NAME_VPROFILE = credentials('ecr_repo_name_vprofile')
+        ECR_REPO_URI_VPROFILE = credentials('ecr_repo_uri_vprofile')
+
+        GITHUB_TOKEN = credentials('github')
+    }
+    stages {
+        stage('Installing Dependencies') {
+            options { timestamps() }
+            steps {
+                sh 'mvn clean install -DskipTests'
+            }
+        }
+
+        stage('Unit Test') {
+            steps {
+                script {
+                    sh "mvn test"
+                }
+            }
+            // post {
+            //     always {
+            //         junit '**/target/surefire-reports/*.xml'
+            //     }
+            // }
+        }
+        
+        stage('Checkstyle Analysis') {
+            steps {
+                sh 'mvn checkstyle:checkstyle'
+            } 
+        }
+
+        stage('sonarQube') {
+            steps {
+                script {
+                    withSonarQubeEnv('sonarqube') {
+                        sh 'mvn sonar:sonar'
+                    }
+                }
+            }
+        }
+    }
+}
