@@ -56,6 +56,24 @@ pipeline {
             } 
         }
 
+	stage('sonarQube') {
+            steps {
+                script {
+                    withSonarQubeEnv('sonar-scanner') {
+                        sh '''
+                            mvn sonar:sonar \
+                            -Dsonar.projectKey=vprofile \
+                            -Dsonar.projectName=vprofile \
+                            -Dsonar.projectVersion=1.0 \
+                            -Dsonar.sources=src/main/java \
+                            -Dsonar.tests=src/test/java \
+                            -Dsonar.java.binaries=target/classes
+                        '''
+                    }
+                }
+            }
+        }
+
         stage('Docker Build') {
             steps {
                 script {
