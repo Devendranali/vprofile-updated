@@ -100,6 +100,8 @@ pipeline {
                 script {
                     sh "helm upgrade --install vprofile ${CHART_PATH} \
                     --namespace ${STAGING_NAMESPACE} \
+                    --create-namespace \
+                    -f ${CHART_PATH}/staging-values.yaml \
                     --set appimage=${DOCKER_IMAGE_NAME},apptag=${BUILD_NUMBER}"
                 }
             }
