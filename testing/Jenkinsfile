@@ -101,6 +101,8 @@ pipeline {
                     sh "helm upgrade --install vprofile ${CHART_PATH} \
                     --namespace ${STAGING_NAMESPACE} \
                     --set appimage=${DOCKER_IMAGE_NAME},apptag=${BUILD_NUMBER}"
-                }         
+                }
+            }
+        }         
     }
 }
