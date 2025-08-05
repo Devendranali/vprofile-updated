@@ -27,7 +27,8 @@ services:
 
   vproapp:
     build: 
-      context: ./Docker-files/app
+      context: ./Docker-files/app/multistage
+      # dockerfile: Docker-files/app/multistage
     image: vprocontainers/vprofileapp
     container_name: vproapp
     ports:
